@@ -1,5 +1,6 @@
 ﻿using BiomechanicNetwork.Models;
 using BiomechanicNetwork.Services;
+using Npgsql;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -20,17 +21,26 @@ namespace BiomechanicNetwork.Database.Repositories
             _cloudinary = new CloudinaryService();
         }
 
-        public List<MuscleGroupWithExercises> GetAllWithExercises()
+        public List<MuscleGroupWithExercises> GetAllWithExercises(bool excludeOtherGroup = false)
         {
             var result = new List<MuscleGroupWithExercises>();
 
-            var query = @"SELECT mg.id, mg.name, mg.image_public_id, 
-                         e.id as exercise_id, e.name as exercise_name
+            string s = "";
+            if (!excludeOtherGroup)
+                s = "WHERE mg.name <> 'Другое'";
+            var query = $@"SELECT mg.id, mg.name, mg.image_public_id, 
+                         e.id as exercise_id, e.name as exercise_name, e.video_public_id as video_public_id
                          FROM muscle_groups mg
                          LEFT JOIN exercises e ON e.muscle_group_id = mg.id
+                         {s}
                          ORDER BY mg.name, e.name";
 
-            var dataTable = _dbHelper.ExecuteQuery(query);
+            var parameters = new NpgsqlParameter[]
+            {
+                 new NpgsqlParameter("@excludeOther", excludeOtherGroup),
+            };
+
+            var dataTable = _dbHelper.ExecuteQuery(query, parameters);
 
             MuscleGroupWithExercises currentGroup = null;
             foreach (DataRow row in dataTable.Rows)
@@ -55,7 +65,8 @@ namespace BiomechanicNetwork.Database.Repositories
                     currentGroup.Exercises.Add(new Exercise
                     {
                         Id = Convert.ToInt32(row["exercise_id"]),
-                        Name = row["exercise_name"].ToString()
+                        Name = row["exercise_name"].ToString(),
+                        VideoPublicId = row["video_public_id"].ToString()
                     });
                 }
             }

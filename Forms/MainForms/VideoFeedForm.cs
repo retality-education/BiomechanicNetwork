@@ -1,14 +1,12 @@
 ﻿using BiomechanicNetwork.Database.Repositories;
 using BiomechanicNetwork.ExtraControls;
+using BiomechanicNetwork.Models;
 using BiomechanicNetwork.Utilities;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace BiomechanicNetwork.Forms.MainForms
@@ -17,11 +15,13 @@ namespace BiomechanicNetwork.Forms.MainForms
     {
         private List<VideoPlayerControl> videoControls = new List<VideoPlayerControl>();
         private VideoRepository _videoRepository;
+        private CommentRepository _commentRepository;
 
         public VideoFeedForm()
         {
             header.Title = "Видео лента";
             _videoRepository = new VideoRepository();
+            _commentRepository = new CommentRepository();
             LoadRealVideos();
 
             Thread.Sleep(100);
@@ -31,37 +31,44 @@ namespace BiomechanicNetwork.Forms.MainForms
         private void LoadRealVideos()
         {
             int topPosition = 20;
-
-            // Получаем реальные видео из базы данных
-            var videos = _videoRepository.GetFeed();
+            var currentUserId = Program.CurrentUser.Id;
+            var videos = _videoRepository.GetFeed(currentUserId);
 
             foreach (DataRow row in videos.Rows)
             {
-                var videoControl = new VideoPlayerControl(GetVideoUrl(row["video_public_id"].ToString()))
+                var videoId = Convert.ToInt32(row["id"]);
+                var isViewed = Convert.ToBoolean(row["is_viewed"]);
+                var isLiked = Convert.ToBoolean(row["is_liked"]);
+
+                var videoControl = new VideoPlayerControl(
+                    GetVideoUrl(row["video_public_id"].ToString()),
+                    videoId,
+                    currentUserId,
+                    isViewed,
+                    isLiked)
                 {
                     Width = 300,
-                    Height = 400,
-                    Tag = row["id"]
+                    Height = 375,
+                    Tag = videoId
                 };
 
-                // Устанавливаем информацию о видео, включая ID автора
                 videoControl.SetVideoInfo(
                     row["user_name"].ToString(),
                     row["exercise_name"].ToString(),
-                    Convert.ToDateTime(row["muscle_group_name"]).ToString(),
-                    Convert.ToInt32(row["user_id"])); // Здесь передаем ID пользователя
+                    row["muscle_group_name"].ToString(),
+                    Convert.ToInt32(row["user_id"]));
 
-                // Устанавливаем метрики (лайки, комментарии, просмотры)
                 videoControl.SetMetrics(
-                    _videoRepository.GetLikeCount(Convert.ToInt32(row["id"])),
-                    0, // Можно добавить получение количества комментариев
-                    0); // Можно добавить получение количества просмотров
+                    _videoRepository.GetLikeCount(videoId),
+                    _commentRepository.GetCommentsCount(videoId, false),
+                    _videoRepository.GetViewsCount(videoId));
 
-                // Подписываемся на событие клика по заголовку
                 videoControl.TitleClicked += VideoControl_TitleClicked;
                 videoControl.Click += VideoControl_Click;
+                videoControl.LikeClicked += VideoControl_LikeClicked;
+                videoControl.ViewAdded += VideoControl_ViewAdded;
+                videoControl.CommentClicked += VideoControl_CommentClicked;
 
-                // Центрирование
                 videoControl.Left = (contentPanel.ClientSize.Width - videoControl.Width) / 2;
                 videoControl.Top = topPosition;
 
@@ -72,22 +79,47 @@ namespace BiomechanicNetwork.Forms.MainForms
             }
         }
 
+        private void VideoControl_ViewAdded(object sender, int videoId)
+        {
+            _videoRepository.AddView(videoId, Program.CurrentUser.Id);
+            var control = (VideoPlayerControl)sender;
+            control.SetMetrics(
+                _videoRepository.GetLikeCount(videoId),
+                _commentRepository.GetCommentsCount(videoId, false),
+                _videoRepository.GetViewsCount(videoId));
+        }
+
+        private void VideoControl_LikeClicked(object sender, int videoId)
+        {
+            _videoRepository.ToggleLike(videoId, Program.CurrentUser.Id);
+            var control = (VideoPlayerControl)sender;
+            control.SetMetrics(
+                _videoRepository.GetLikeCount(videoId),
+                _commentRepository.GetCommentsCount(videoId, false),
+                _videoRepository.GetViewsCount(videoId));
+        }
+
+        private void VideoControl_CommentClicked(object sender, int videoId)
+        {
+            var commentsForm = new CommentsForm(videoId, false, true);
+            commentsForm.ShowDialog();
+
+            // Обновляем счетчик комментариев после закрытия формы комментариев
+            var control = (VideoPlayerControl)sender;
+            control.SetMetrics(
+                _videoRepository.GetLikeCount(videoId),
+                _commentRepository.GetCommentsCount(videoId, false),
+                _videoRepository.GetViewsCount(videoId));
+        }
+
         private void VideoControl_TitleClicked(object sender, EventArgs e)
         {
             var videoControl = (VideoPlayerControl)sender;
-
-            // Проверяем, есть ли ID автора
             if (videoControl.AuthorId.HasValue)
             {
-                // Открываем профиль автора
                 var profileForm = new ProfileForm(videoControl.AuthorId.Value);
                 profileForm.Show();
                 this.Close();
-            }
-            else
-            {
-                MessageBox.Show("Информация об авторе недоступна", "Ошибка",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
@@ -99,7 +131,6 @@ namespace BiomechanicNetwork.Forms.MainForms
         private void VideoControl_Click(object sender, EventArgs e)
         {
             var clickedControl = (VideoPlayerControl)sender;
-
             foreach (var control in videoControls)
             {
                 if (control != clickedControl)

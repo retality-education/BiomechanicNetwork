@@ -1,4 +1,5 @@
-﻿using System;
+﻿using BiomechanicNetwork.Models;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -17,6 +18,8 @@ namespace BiomechanicNetwork.ExtraControls
         private Button button;
 
         public event EventHandler GroupClicked;
+
+        public List<Exercise> ExerciseList = new();
 
         public MuscleGroupControl(string groupName, Image image)
         {

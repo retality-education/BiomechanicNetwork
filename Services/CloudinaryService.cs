@@ -31,21 +31,30 @@ namespace BiomechanicNetwork.Services
 
         public string UploadVideo(string filePath, string publicId = null)
         {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                throw new FileNotFoundException("Файл не найден", filePath);
+
+            if (_cloudinary == null)
+                throw new InvalidOperationException("Cloudinary не инициализирован");
+
             try
             {
                 var uploadParams = new VideoUploadParams()
                 {
-                    File = new FileDescription(filePath),
-                    PublicId = publicId,
-                    Overwrite = true
+                    File = new FileDescription(@"test.mp4"),
+                    PublicId = "dog_closeup",
                 };
 
                 var uploadResult = _cloudinary.Upload(uploadParams);
+
+                if (uploadResult == null)
+                    throw new Exception("Cloudinary вернул null");
+
                 return uploadResult.PublicId;
             }
             catch (Exception ex)
             {
-                throw new Exception("Ошибка загрузки видео в Cloudinary", ex);
+                throw new Exception($"Ошибка загрузки видео: {ex.Message}", ex);
             }
         }
 

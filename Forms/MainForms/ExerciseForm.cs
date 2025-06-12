@@ -2,7 +2,7 @@
 using BiomechanicNetwork.ExtraControls;
 using BiomechanicNetwork.Models;
 using BiomechanicNetwork.Models.Data;
-using Npgsql;
+using BiomechanicNetwork.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -19,12 +19,14 @@ namespace BiomechanicNetwork.Forms.MainForms
         private Panel currentExercisesPanel;
         private List<VideoPlayerControl> videoControls = new List<VideoPlayerControl>();
         private readonly MuscleGroupRepository _muscleGroupRepo;
-
+        private readonly CommentRepository _commentRepository;
+        private readonly VideoRepository _videoRepository;
         public ExerciseForm()
         {
             header.Title = "Упражнения";
             _muscleGroupRepo = new MuscleGroupRepository();
-
+            _commentRepository = new CommentRepository();
+            _videoRepository = new VideoRepository();
             LoadMuscleGroups();
             InitializeExercisesView();
             PauseAllVideos();
@@ -55,7 +57,7 @@ namespace BiomechanicNetwork.Forms.MainForms
                 var groupControl = new MuscleGroupControl(group.Name, group.Image)
                 {
                     Location = new Point(x, y),
-                    Tag = group.Name
+                    Tag = group
                 };
                 groupControl.GroupClicked += MuscleGroup_Click;
 
@@ -85,7 +87,6 @@ namespace BiomechanicNetwork.Forms.MainForms
             };
             contentPanel.Controls.Add(currentExercisesPanel);
 
-            // Кнопка "Назад"
             var backButton = new Button
             {
                 Text = "← Назад к группам",
@@ -103,76 +104,74 @@ namespace BiomechanicNetwork.Forms.MainForms
             };
             currentExercisesPanel.Controls.Add(backButton);
 
-            // Заголовок с названием группы (стилизованный)
             var titleLabel = new Label
             {
                 Text = groupData.Name,
+                Image = groupData.Image,
                 Font = new Font("Arial", 18, FontStyle.Bold),
-                ForeColor = Color.FromArgb(0, 150, 255), // Голубой цвет
+                ForeColor = Color.FromArgb(0, 150, 255),
                 AutoSize = true,
                 Location = new Point((currentExercisesPanel.Width - 200) / 2, 25),
                 BackColor = Color.Transparent
             };
             currentExercisesPanel.Controls.Add(titleLabel);
 
-            // Отображение упражнений
             int xPos = 20;
             int yPos = 80;
             int videoWidth = (currentExercisesPanel.Width - 60) / 2;
             if (videoWidth > 350) videoWidth = 350;
             int videoHeight = 350;
 
-            foreach (var exercise in groupData.Exercises)
+            int topPosition = 20;
+            var currentUserId = Program.CurrentUser.Id;
+            var videos = _videoRepository.GetFeed(currentUserId);
+
+            foreach (var row in groupData.Exercises)
             {
-                var videoControl = new VideoPlayerControl("test.mp4", false)
+                var videoId = Convert.ToInt32(row.Id);
+                var isViewed = Convert.ToBoolean(row.IsViewed);
+                var isLiked = Convert.ToBoolean(row.IsLiked);
+
+                var videoControl = new VideoPlayerControl(
+                    GetVideoUrl(row.VideoPublicId),
+                    videoId,
+                    currentUserId,
+                    isViewed,
+                    isLiked,
+                    false)
                 {
                     Width = 300,
-                    Height = videoHeight,
-                    Location = new Point(xPos, yPos)
+                    Height = 375,
+                    Tag = videoId
                 };
-                videoControl.SetVideoInfo("", exercise.Name, "");
-                videoControl.SetMetrics(0, 0, 0);
-                videoControl.Click += VideoControl_Click;
 
-                currentExercisesPanel.Controls.Add(videoControl);
+                videoControl.SetVideoInfo(
+                    "",
+                    groupData.Name,
+                    row.Name);
+
+                videoControl.SetMetrics(
+                    _videoRepository.GetLikeCount(videoId),
+                    _commentRepository.GetCommentsCount(videoId, false),
+                    _videoRepository.GetViewsCount(videoId));
+
+                videoControl.Click += VideoControl_Click;
+                videoControl.LikeClicked += VideoControl_LikeClicked;
+                videoControl.ViewAdded += VideoControl_ViewAdded;
+                videoControl.CommentClicked += VideoControl_CommentClicked;
+
+                videoControl.Left = (contentPanel.ClientSize.Width - videoControl.Width) / 2;
+                videoControl.Top = topPosition;
+
+                contentPanel.Controls.Add(videoControl);
                 videoControls.Add(videoControl);
 
-                // Кнопка комментария для экспертов
-                if (Program.CurrentUser.Role == UserRole.Expert)
-                {
-                    var commentButton = new Button
-                    {
-                        Text = "Добавить комментарий",
-                        Size = new Size(videoWidth - 20, 30),
-                        Location = new Point(xPos, yPos + videoHeight + 10),
-                        FlatStyle = FlatStyle.Flat,
-                        BackColor = Color.FromArgb(70, 70, 70),
-                        ForeColor = Color.White
-                    };
-                    commentButton.Click += (s, args) =>
-                    {
-                        MessageBox.Show($"Комментарий к упражнению {exercise.Recommendations}");
-                    };
-                    currentExercisesPanel.Controls.Add(commentButton);
-                }
-
-                // Переход на следующую строку после каждых 2 упражнений
-                xPos += videoWidth + 20;
-                if (xPos + videoWidth > currentExercisesPanel.Width - 20)
-                {
-                    xPos = 20;
-                    yPos += videoHeight + 50;
-                }
+                topPosition += videoControl.Height + 20;
             }
-
-            Thread.Sleep(100);
-            PauseAllVideos();
         }
-
         private void VideoControl_Click(object sender, EventArgs e)
         {
             var clickedControl = (VideoPlayerControl)sender;
-
             foreach (var control in videoControls)
             {
                 if (control != clickedControl)
@@ -184,6 +183,38 @@ namespace BiomechanicNetwork.Forms.MainForms
             else
                 clickedControl.PlayVideo();
         }
+        private void VideoControl_ViewAdded(object sender, int videoId)
+        {
+            _videoRepository.AddView(videoId, Program.CurrentUser.Id);
+            var control = (VideoPlayerControl)sender;
+            control.SetMetrics(
+                _videoRepository.GetLikeCount(videoId),
+                _commentRepository.GetCommentsCount(videoId, false),
+                _videoRepository.GetViewsCount(videoId));
+        }
+
+        private void VideoControl_LikeClicked(object sender, int videoId)
+        {
+            _videoRepository.ToggleLike(videoId, Program.CurrentUser.Id);
+            var control = (VideoPlayerControl)sender;
+            control.SetMetrics(
+                _videoRepository.GetLikeCount(videoId),
+                _commentRepository.GetCommentsCount(videoId, false),
+                _videoRepository.GetViewsCount(videoId));
+        }
+
+        private void VideoControl_CommentClicked(object sender, int videoId)
+        {
+            var commentsForm = new CommentsForm(videoId, false, Program.CurrentUser.Role == UserRole.Expert);
+            commentsForm.ShowDialog();
+
+            // Обновляем счетчик комментариев после закрытия формы комментариев
+            var control = (VideoPlayerControl)sender;
+            control.SetMetrics(
+                _videoRepository.GetLikeCount(videoId),
+                _commentRepository.GetCommentsCount(videoId, false),
+                _videoRepository.GetViewsCount(videoId));
+        }
 
         private void PauseAllVideos()
         {
@@ -191,6 +222,11 @@ namespace BiomechanicNetwork.Forms.MainForms
             {
                 control.PauseVideo();
             }
+        }
+
+        private string GetVideoUrl(string publicId)
+        {
+            return $"http://res.cloudinary.com/{SecretsManager.GetCloudinaryCloudName()}/video/upload/{publicId}";
         }
 
         protected override void OnNavigationRequested(string formName)

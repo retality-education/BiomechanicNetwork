@@ -17,6 +17,7 @@ namespace BiomechanicNetwork.Forms.MainForms
         private readonly int _userId;
         private readonly VideoRepository _videoRepository;
         private readonly UserRepository _userRepository;
+        private readonly CommentRepository _commentRepository;
         private readonly CloudinaryService _cloudinaryService;
         private List<VideoPlayerControl> _videoControls = new List<VideoPlayerControl>();
         private Button _uploadButton;
@@ -29,6 +30,7 @@ namespace BiomechanicNetwork.Forms.MainForms
             _userId = userId;
             _videoRepository = new VideoRepository();
             _userRepository = new UserRepository();
+            _commentRepository = new CommentRepository();
             _cloudinaryService = new CloudinaryService();
 
             InitializeForm();
@@ -42,7 +44,6 @@ namespace BiomechanicNetwork.Forms.MainForms
             contentPanel.AutoScroll = true;
             contentPanel.Padding = new Padding(20);
 
-            // Создаем панель для информации о пользователе (для удобства центрирования)
             Panel userInfoPanel = new Panel
             {
                 Width = contentPanel.ClientSize.Width - 40,
@@ -53,7 +54,6 @@ namespace BiomechanicNetwork.Forms.MainForms
             };
             contentPanel.Controls.Add(userInfoPanel);
 
-            // Инициализация элементов информации о пользователе (центрированных)
             _avatarPictureBox = new PictureBox
             {
                 Width = 100,
@@ -109,18 +109,10 @@ namespace BiomechanicNetwork.Forms.MainForms
                 var user = _userRepository.GetUserById(_userId);
                 if (user != null)
                 {
-                    // Загрузка аватарки
                     if (!string.IsNullOrEmpty(user.AvatarPublicId))
                     {
                         var image = _cloudinaryService.GetImage(user.AvatarPublicId);
-                        if (image != null)
-                        {
-                            _avatarPictureBox.Image = image;
-                        }
-                        else
-                        {
-                            _avatarPictureBox.Image = Properties.Resources.default_avatar;
-                        }
+                        _avatarPictureBox.Image = image ?? Properties.Resources.default_avatar;
                     }
                     else
                     {
@@ -145,12 +137,8 @@ namespace BiomechanicNetwork.Forms.MainForms
         {
             try
             {
-                // Получаем видео пользователя из базы данных
-                var videos = _videoRepository.GetUserVideos(_userId);
-
-                // Начальная позиция для первого видео
-                int topPosition = _userId == Program.CurrentUser.Id ?
-                    (_uploadButton?.Bottom ?? 200) + 20 : 200;
+                var videos = _videoRepository.GetUserVideos(_userId, Program.CurrentUser.Id);
+                int topPosition = _userId == Program.CurrentUser.Id ? (_uploadButton?.Bottom ?? 200) + 20 : 200;
 
                 foreach (DataRow videoRow in videos.Rows)
                 {
@@ -172,31 +160,82 @@ namespace BiomechanicNetwork.Forms.MainForms
         {
             string videoUrl = GetVideoUrl(videoRow["video_public_id"].ToString());
             int videoIndex = _videoControls.Count + 1;
-
-            var videoControl = new VideoPlayerControl(videoUrl)
+            int videoId = Convert.ToInt32(videoRow["id"]);
+            bool isViewed = (bool)videoRow["is_viewed"];
+            bool isLiked = (bool)videoRow["is_liked"];
+            var videoControl = new VideoPlayerControl(videoUrl, videoId, Program.CurrentUser.Id, isViewed, isLiked)
             {
                 Width = 300,
-                Height = 400,
-                Tag = videoRow["id"],
+                Height = 375,
+                Tag = videoId,
                 Top = topPosition,
-                Left = (contentPanel.ClientSize.Width - 300) / 2 // Центрируем видео
+                Left = (contentPanel.ClientSize.Width - 300) / 2
             };
 
-            // Устанавливаем информацию о видео (только 3 поля)
             videoControl.SetVideoInfo(
-                title: $"Видео №{videoIndex}",
-                author: videoRow["muscle_group_name"].ToString(),
-                date: videoRow["exercise_name"].ToString()
+                $"Видео №{videoIndex}",
+                videoRow["muscle_group_name"].ToString(),
+                videoRow["exercise_name"].ToString()
             );
 
-            int videoId = Convert.ToInt32(videoRow["id"]);
             int likes = _videoRepository.GetLikeCount(videoId);
-            int comments = _videoRepository.GetComments(videoId).Rows.Count;
+            int comments = _commentRepository.GetCommentsCount(videoId);
+            int views = _videoRepository.GetViewsCount(videoId);
 
-            videoControl.SetMetrics(likes, comments, 0);
+            videoControl.SetMetrics(likes, comments, views);
+
             videoControl.Click += VideoControl_Click;
+            videoControl.LikeClicked += VideoControl_LikeClicked;
+            videoControl.ViewAdded += VideoControl_ViewAdded;
+            videoControl.CommentClicked += VideoControl_CommentClicked;
 
             return videoControl;
+        }
+        private void VideoControl_Click(object sender, EventArgs e)
+        {
+            var clickedControl = (VideoPlayerControl)sender;
+            foreach (var control in _videoControls)
+            {
+                if (control != clickedControl)
+                    control.PauseVideo();
+            }
+
+            if (clickedControl.IsPlaying())
+                clickedControl.PauseVideo();
+            else
+                clickedControl.PlayVideo();
+        }
+        private void VideoControl_ViewAdded(object sender, int videoId)
+        {
+            _videoRepository.AddView(videoId, Program.CurrentUser.Id);
+            var control = (VideoPlayerControl)sender;
+            control.SetMetrics(
+                _videoRepository.GetLikeCount(videoId),
+                _commentRepository.GetCommentsCount(videoId, false),
+                _videoRepository.GetViewsCount(videoId));
+        }
+
+        private void VideoControl_LikeClicked(object sender, int videoId)
+        {
+            _videoRepository.ToggleLike(videoId, Program.CurrentUser.Id);
+            var control = (VideoPlayerControl)sender;
+            control.SetMetrics(
+                _videoRepository.GetLikeCount(videoId),
+                _commentRepository.GetCommentsCount(videoId, false),
+                _videoRepository.GetViewsCount(videoId));
+        }
+
+        private void VideoControl_CommentClicked(object sender, int videoId)
+        {
+            var commentsForm = new CommentsForm(videoId, false, true);
+            commentsForm.ShowDialog();
+
+            // Обновляем счетчик комментариев после закрытия формы комментариев
+            var control = (VideoPlayerControl)sender;
+            control.SetMetrics(
+                _videoRepository.GetLikeCount(videoId),
+                _commentRepository.GetCommentsCount(videoId, false),
+                _videoRepository.GetViewsCount(videoId));
         }
         private async void UploadButton_Click(object sender, EventArgs e)
         {
@@ -209,9 +248,7 @@ namespace BiomechanicNetwork.Forms.MainForms
                         string publicId = $"user_{_userId}_video_{DateTime.Now.Ticks}";
                         string uploadedPublicId = _cloudinaryService.UploadVideo(uploadForm.FilePath, publicId);
 
-                        // Добавляем видео в БД (используем упражнение "Другое" по умолчанию)
-                        int defaultExerciseId = 1; // ID упражнения "Другое"
-                        bool success = _videoRepository.AddVideo(_userId, defaultExerciseId, uploadedPublicId);
+                        bool success = _videoRepository.AddVideo(_userId, uploadForm.SelectedExerciseId, uploadedPublicId);
 
                         if (!success)
                         {
@@ -223,7 +260,6 @@ namespace BiomechanicNetwork.Forms.MainForms
                         MessageBox.Show("Видео успешно загружено!", "Успех",
                                       MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-                        // Обновляем список видео
                         contentPanel.Controls.Clear();
                         if (_userId == Program.CurrentUser.Id)
                             contentPanel.Controls.Add(_uploadButton);
@@ -238,29 +274,12 @@ namespace BiomechanicNetwork.Forms.MainForms
             }
         }
 
-       
-
-
         private string GetVideoUrl(string publicId)
         {
             return $"http://res.cloudinary.com/{SecretsManager.GetCloudinaryCloudName()}/video/upload/{publicId}";
         }
 
-        private void VideoControl_Click(object sender, EventArgs e)
-        {
-            var clickedControl = (VideoPlayerControl)sender;
 
-            foreach (var control in _videoControls)
-            {
-                if (control != clickedControl)
-                    control.PauseVideo();
-            }
-
-            if (clickedControl.IsPlaying())
-                clickedControl.PauseVideo();
-            else
-                clickedControl.PlayVideo();
-        }
 
         private void PauseAllVideos()
         {

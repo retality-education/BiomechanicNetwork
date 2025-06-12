@@ -2,16 +2,14 @@
 using LibVLCSharp.WinForms;
 using System;
 using System.Drawing;
-using System.IO;
 using System.Windows.Forms;
 using System.ComponentModel;
 
 namespace BiomechanicNetwork.ExtraControls
 {
-
     public partial class VideoPlayerControl : UserControl
     {
-        // Элементы управления
+        // Элементы управления и медиа
         private LibVLC _libVLC;
         private MediaPlayer _mediaPlayer;
         private VideoView _videoView;
@@ -30,69 +28,41 @@ namespace BiomechanicNetwork.ExtraControls
         private Button _btnPause;
         private Button _btnFullscreen;
 
-        // Параметры
+        // Состояние
         private string _videoPath;
         private long _lastPosition = 0;
         private bool _isPlaying = true;
+        private bool _isViewed = false;
+        private bool _isLiked = false;
+        private int _videoId;
+        private int _currentUserId;
 
-        // Публичные события
+        // События
         public event EventHandler TitleClicked;
-        public event EventHandler LikeClicked;
-        public event EventHandler CommentClicked;
-        public event EventHandler PauseClicked;
+        public event EventHandler<int> LikeClicked;
+        public event EventHandler<int> CommentClicked;
+        public event EventHandler<int> ViewAdded;
 
-        public VideoPlayerControl(string videoPath, bool showTitle = true)
+        public VideoPlayerControl(string videoPath, int videoId, int currentUserId, bool isViewed, bool isLiked, bool showTitle = true)
         {
             _videoPath = videoPath;
+            _videoId = videoId;
+            _currentUserId = currentUserId;
+            _isViewed = isViewed;
+            _isLiked = isLiked;
+
             InitializeComponent();
-            InitializeControls();
-
-            // Управление видимостью заголовка
-            _lblTitle.Visible = showTitle;
-            if (!showTitle)
-            {
-                // Сдвигаем остальные элементы вверх
-                var offset = -_lblTitle.Height;
-                _lblAuthor.Top += offset;
-                _lblDate.Top += offset;
-                _videoView.Top += offset;
-                _bottomPanel.Top += offset;
-
-                // Корректируем высоту контрола
-                this.Height += offset;
-            }
-
+            InitializeControls(showTitle);
             InitializeVLC();
         }
-        // Добавляем новое свойство для хранения ID пользователя
+
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        // Добавляем новое свойство для хранения ID пользователя
         public int? AuthorId { get; set; }
         public bool IsPlaying() => _isPlaying;
 
-        public void PlayVideo()
+        private void InitializeControls(bool showTitle)
         {
-            if (!_isPlaying)
-            {
-                _mediaPlayer.Play();
-                _isPlaying = true;
-                _btnPause.Text = "⏸ Пауза";
-            }
-        }
-
-        public void PauseVideo()
-        {
-            if (_isPlaying)
-            {
-                _mediaPlayer.Pause();
-                _isPlaying = false;
-                _btnPause.Text = "▶ Воспроизвести";
-            }
-        }
-        private void InitializeControls()
-        {
-            // Настройка основного контрола
-            this.Size = new Size(300, 380);
+            this.Size = new Size(300, 450);
             this.BackColor = Color.White;
 
             // Верхние метки
@@ -130,7 +100,7 @@ namespace BiomechanicNetwork.ExtraControls
                 BackColor = Color.Black,
                 Cursor = Cursors.Hand
             };
-            _videoView.Click += VideoView_Click;
+            this.Click += VideoView_Click;
 
             // Нижняя панель
             _bottomPanel = new Panel
@@ -140,21 +110,22 @@ namespace BiomechanicNetwork.ExtraControls
                 BackColor = Color.LightGray
             };
 
-            // Кнопки метрик со счетчиками
+            // Кнопки метрик
             _btnLikes = CreateMetricButton("👍 0", 10);
-            _btnLikes.Click += (s, e) => LikeClicked?.Invoke(this, e);
+            _btnLikes.Click += (s, e) => {
+                _isLiked = !_isLiked;
+                UpdateLikeButton();
+                LikeClicked?.Invoke(this, _videoId);
+            };
+            UpdateLikeButton();
 
             _btnComments = CreateMetricButton("💬 0", 100);
-            _btnComments.Click += (s, e) => CommentClicked?.Invoke(this, e);
+            _btnComments.Click += (s, e) => CommentClicked?.Invoke(this, _videoId);
 
             _btnViews = CreateMetricButton("👁️ 0", 190);
             _btnViews.Enabled = false;
-            _btnViews.FlatStyle = FlatStyle.Flat;
-            _btnViews.FlatAppearance.BorderColor = Color.Gray;
-            _btnViews.ForeColor = Color.Gray;
-            _btnViews.Cursor = Cursors.Default;
 
-            // Кнопки управления
+            // Кнопка паузы
             _btnPause = new Button
             {
                 Text = "⏸ Пауза",
@@ -163,12 +134,9 @@ namespace BiomechanicNetwork.ExtraControls
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.White
             };
-            _btnPause.Click += (s, e) =>
-            {
-                TogglePause();
-                PauseClicked?.Invoke(this, e);
-            };
+            _btnPause.Click += (s, e) => TogglePause();
 
+            // Кнопка полного экрана
             _btnFullscreen = new Button
             {
                 Text = "⛶ Полный экран",
@@ -191,6 +159,23 @@ namespace BiomechanicNetwork.ExtraControls
             this.Controls.Add(_lblDate);
             this.Controls.Add(_videoView);
             this.Controls.Add(_bottomPanel);
+
+            if (!showTitle)
+            {
+                _lblTitle.Visible = false;
+                var offset = -_lblTitle.Height;
+                _lblAuthor.Top += offset;
+                _lblDate.Top += offset;
+                _videoView.Top += offset;
+                _bottomPanel.Top += offset;
+                this.Height += offset;
+            }
+        }
+
+        private void UpdateLikeButton()
+        {
+            _btnLikes.BackColor = _isLiked ? Color.LightCoral : Color.White;
+            _btnLikes.ForeColor = _isLiked ? Color.DarkRed : SystemColors.ControlText;
         }
 
         private Button CreateMetricButton(string text, int x)
@@ -206,7 +191,7 @@ namespace BiomechanicNetwork.ExtraControls
             };
         }
 
-        private async void InitializeVLC()
+        private void InitializeVLC()
         {
             try
             {
@@ -215,14 +200,9 @@ namespace BiomechanicNetwork.ExtraControls
                 _mediaPlayer = new MediaPlayer(_libVLC);
                 _videoView.MediaPlayer = _mediaPlayer;
 
-                _media = new Media(_libVLC, new Uri(_videoPath));
+                _media = new Media(_libVLC, new Uri(_videoPath), ":input-repeat=65535");
                 _mediaPlayer.Play(_media);
-
-                await Task.Delay(5000);
-
-                // Сразу ставим на паузу (воспроизведение начнется после загрузки)
-                _mediaPlayer.Pause();
-
+                _mediaPlayer.Pause(); // Начинаем с паузы
             }
             catch (Exception ex)
             {
@@ -232,6 +212,11 @@ namespace BiomechanicNetwork.ExtraControls
 
         private void VideoView_Click(object sender, EventArgs e)
         {
+            if (!_isViewed)
+            {
+                _isViewed = true;
+                ViewAdded?.Invoke(this, _videoId);
+            }
             TogglePause();
         }
 
@@ -250,16 +235,6 @@ namespace BiomechanicNetwork.ExtraControls
             _isPlaying = !_isPlaying;
         }
 
-        private void BtnFullscreen_Click(object sender, EventArgs e)
-        {
-            ShowFullscreen();
-        }
-
-        private void LblTitle_Click(object sender, EventArgs e)
-        {
-            MessageBox.Show($"Клик по заголовку: {_lblTitle.Text}");
-        }
-
         public void SetVideoInfo(string title, string author, string date, int? authorId = null)
         {
             _lblTitle.Text = title;
@@ -267,6 +242,7 @@ namespace BiomechanicNetwork.ExtraControls
             _lblDate.Text = date;
             AuthorId = authorId;
         }
+
         public void SetMetrics(int likes, int comments, int views)
         {
             _btnLikes.Text = $"👍 {likes}";
@@ -274,10 +250,34 @@ namespace BiomechanicNetwork.ExtraControls
             _btnViews.Text = $"👁️ {views}";
         }
 
+        public void PlayVideo()
+        {
+            if (!_isPlaying)
+            {
+                _mediaPlayer.Play();
+                _isPlaying = true;
+                _btnPause.Text = "⏸ Пауза";
+            }
+        }
+
+        public void PauseVideo()
+        {
+            if (_isPlaying)
+            {
+                _mediaPlayer.Pause();
+                _isPlaying = false;
+                _btnPause.Text = "▶ Воспроизвести";
+            }
+        }
+
         private void ShowFullscreen()
         {
-            // Сохраняем текущую позицию
+            // Сохраняем текущую позицию и состояние
             _lastPosition = _mediaPlayer.Time;
+            bool wasPlaying = _isPlaying;
+
+            // Останавливаем основной плеер
+            _mediaPlayer.Stop();
 
             // Создаем полноэкранную форму
             var fullscreenForm = new Form
@@ -296,9 +296,15 @@ namespace BiomechanicNetwork.ExtraControls
             };
 
             // Настраиваем медиа
-            var fullscreenMedia = new Media(_libVLC, _videoPath);
+            var fullscreenMedia = new Media(_libVLC, new Uri(_videoPath), ":input-repeat=65535");
             fullscreenView.MediaPlayer.Play(fullscreenMedia);
             fullscreenView.MediaPlayer.Time = _lastPosition;
+
+            // Если видео было на паузе, ставим на паузу и в полноэкранном режиме
+            if (!wasPlaying)
+            {
+                fullscreenView.MediaPlayer.Pause();
+            }
 
             // Обработка закрытия формы
             fullscreenForm.FormClosed += (s, e) =>
@@ -311,9 +317,16 @@ namespace BiomechanicNetwork.ExtraControls
                 fullscreenView.Dispose();
                 fullscreenMedia.Dispose();
 
-                // Возобновляем воспроизведение в основном контроле
+                // Восстанавливаем воспроизведение в основном контроле
+                _media = new Media(_libVLC, new Uri(_videoPath), ":input-repeat=65535");
+                _mediaPlayer.Play(_media);
                 _mediaPlayer.Time = _lastPosition;
-                _mediaPlayer.Play();
+
+                // Восстанавливаем состояние паузы
+                if (!wasPlaying)
+                {
+                    _mediaPlayer.Pause();
+                }
             };
 
             // Обработка нажатия ESC
@@ -324,10 +337,7 @@ namespace BiomechanicNetwork.ExtraControls
             };
 
             fullscreenForm.Controls.Add(fullscreenView);
-            fullscreenForm.Show();
-
-            // Ставим на паузу основной плеер
-            _mediaPlayer.Pause();
+            fullscreenForm.ShowDialog(); // Используем ShowDialog чтобы блокировать основной поток
         }
     }
 }

@@ -17,7 +17,7 @@ namespace BiomechanicNetwork.Repositories
         }
         public UserModel GetUserById(int userId)
         {
-            var query = @"SELECT id, name, avatar_public_id FROM users WHERE id = @userId";
+            var query = @"SELECT id, name, avatar_public_id, role_id FROM users WHERE id = @userId";
 
             var parameters = new NpgsqlParameter[]
             {
@@ -33,7 +33,8 @@ namespace BiomechanicNetwork.Repositories
                     {
                         Id = Convert.ToInt32(row["id"]),
                         Name = row["name"].ToString(),
-                        AvatarPublicId = row["avatar_public_id"]?.ToString()
+                        AvatarPublicId = row["avatar_public_id"]?.ToString(),
+                        RoleId = Convert.ToInt32(row["role_id"])
                     };
                 }
             }
