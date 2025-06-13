@@ -152,7 +152,7 @@ namespace BiomechanicNetwork.Forms.MainForms
 
                 videoControl.SetMetrics(
                     _videoRepository.GetLikeCountExercise(videoId),
-                    _commentRepository.GetCommentsCount(videoId, false),
+                    _commentRepository.GetCommentsCount(videoId, true),
                     _videoRepository.GetViewsCountExercise(videoId));
 
                 videoControl.Click += VideoControl_Click;
@@ -190,7 +190,7 @@ namespace BiomechanicNetwork.Forms.MainForms
             var control = (VideoPlayerControl)sender;
             control.SetMetrics(
                 _videoRepository.GetLikeCountExercise(videoId),
-                _commentRepository.GetCommentsCount(videoId, false),
+                _commentRepository.GetCommentsCount(videoId, true),
                 _videoRepository.GetViewsCountExercise(videoId));
         }
 
@@ -200,20 +200,20 @@ namespace BiomechanicNetwork.Forms.MainForms
             var control = (VideoPlayerControl)sender;
             control.SetMetrics(
                 _videoRepository.GetLikeCountExercise(videoId),
-                _commentRepository.GetCommentsCount(videoId, false),
+                _commentRepository.GetCommentsCount(videoId, true),
                 _videoRepository.GetViewsCountExercise(videoId));
         }
 
         private void VideoControl_CommentClicked(object sender, int videoId)
         {
-            var commentsForm = new CommentsForm(videoId, false, Program.CurrentUser.Role == UserRole.Expert);
+            var commentsForm = new CommentsForm(videoId, true, Program.CurrentUser.Role == UserRole.Expert);
             commentsForm.ShowDialog();
 
             // Обновляем счетчик комментариев после закрытия формы комментариев
             var control = (VideoPlayerControl)sender;
             control.SetMetrics(
                 _videoRepository.GetLikeCountExercise(videoId),
-                _commentRepository.GetCommentsCount(videoId, false),
+                _commentRepository.GetCommentsCount(videoId, true),
                 _videoRepository.GetViewsCountExercise(videoId));
         }
 

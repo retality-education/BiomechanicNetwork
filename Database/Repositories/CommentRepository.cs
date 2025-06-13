@@ -32,7 +32,7 @@ namespace BiomechanicNetwork.Database.Repositories
         public DataTable GetExerciseComments(int exerciseId)
         {
             string query = @"
-                SELECT c.id, c.user_id, u.name as user_name, u.role as user_role, c.text, c.created_at 
+                SELECT c.id, c.user_id, u.name as user_name, u.role_id as user_role, c.text, c.created_at 
                 FROM exercise_comments c
                 JOIN users u ON u.id = c.user_id
                 WHERE c.exercise_id = @exerciseId
