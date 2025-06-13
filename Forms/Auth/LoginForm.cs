@@ -176,7 +176,6 @@ namespace BiomechanicNetwork.Forms.Auth
                 ? new AdminForm(Program.CurrentUser.Id)
                 : new ExerciseForm();
 
-            mainForm.FormClosed += (s, args) => this.Close();
             mainForm.Show();
         }
 
