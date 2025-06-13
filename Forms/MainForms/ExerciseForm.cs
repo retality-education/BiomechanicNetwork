@@ -107,7 +107,6 @@ namespace BiomechanicNetwork.Forms.MainForms
             var titleLabel = new Label
             {
                 Text = groupData.Name,
-                Image = groupData.Image,
                 Font = new Font("Arial", 18, FontStyle.Bold),
                 ForeColor = Color.FromArgb(0, 150, 255),
                 AutoSize = true,
@@ -122,9 +121,11 @@ namespace BiomechanicNetwork.Forms.MainForms
             if (videoWidth > 350) videoWidth = 350;
             int videoHeight = 350;
 
-            int topPosition = 20;
+            int topPosition = 80;
             var currentUserId = Program.CurrentUser.Id;
             var videos = _videoRepository.GetFeed(currentUserId);
+
+            
 
             foreach (var row in groupData.Exercises)
             {
@@ -137,8 +138,7 @@ namespace BiomechanicNetwork.Forms.MainForms
                     videoId,
                     currentUserId,
                     isViewed,
-                    isLiked,
-                    false)
+                    isLiked)
                 {
                     Width = 300,
                     Height = 375,
@@ -146,14 +146,14 @@ namespace BiomechanicNetwork.Forms.MainForms
                 };
 
                 videoControl.SetVideoInfo(
-                    "",
                     groupData.Name,
-                    row.Name);
+                    row.Name,
+                    row.Recommendations);
 
                 videoControl.SetMetrics(
-                    _videoRepository.GetLikeCount(videoId),
+                    _videoRepository.GetLikeCountExercise(videoId),
                     _commentRepository.GetCommentsCount(videoId, false),
-                    _videoRepository.GetViewsCount(videoId));
+                    _videoRepository.GetViewsCountExercise(videoId));
 
                 videoControl.Click += VideoControl_Click;
                 videoControl.LikeClicked += VideoControl_LikeClicked;
@@ -163,11 +163,12 @@ namespace BiomechanicNetwork.Forms.MainForms
                 videoControl.Left = (contentPanel.ClientSize.Width - videoControl.Width) / 2;
                 videoControl.Top = topPosition;
 
-                contentPanel.Controls.Add(videoControl);
+                currentExercisesPanel.Controls.Add(videoControl);
                 videoControls.Add(videoControl);
 
                 topPosition += videoControl.Height + 20;
             }
+            Thread.Sleep(2000);
         }
         private void VideoControl_Click(object sender, EventArgs e)
         {
@@ -185,22 +186,22 @@ namespace BiomechanicNetwork.Forms.MainForms
         }
         private void VideoControl_ViewAdded(object sender, int videoId)
         {
-            _videoRepository.AddView(videoId, Program.CurrentUser.Id);
+            _videoRepository.AddViewExercise(videoId, Program.CurrentUser.Id);
             var control = (VideoPlayerControl)sender;
             control.SetMetrics(
-                _videoRepository.GetLikeCount(videoId),
+                _videoRepository.GetLikeCountExercise(videoId),
                 _commentRepository.GetCommentsCount(videoId, false),
-                _videoRepository.GetViewsCount(videoId));
+                _videoRepository.GetViewsCountExercise(videoId));
         }
 
         private void VideoControl_LikeClicked(object sender, int videoId)
         {
-            _videoRepository.ToggleLike(videoId, Program.CurrentUser.Id);
+            _videoRepository.ToggleLikeExercise(videoId, Program.CurrentUser.Id);
             var control = (VideoPlayerControl)sender;
             control.SetMetrics(
-                _videoRepository.GetLikeCount(videoId),
+                _videoRepository.GetLikeCountExercise(videoId),
                 _commentRepository.GetCommentsCount(videoId, false),
-                _videoRepository.GetViewsCount(videoId));
+                _videoRepository.GetViewsCountExercise(videoId));
         }
 
         private void VideoControl_CommentClicked(object sender, int videoId)
@@ -211,9 +212,9 @@ namespace BiomechanicNetwork.Forms.MainForms
             // Обновляем счетчик комментариев после закрытия формы комментариев
             var control = (VideoPlayerControl)sender;
             control.SetMetrics(
-                _videoRepository.GetLikeCount(videoId),
+                _videoRepository.GetLikeCountExercise(videoId),
                 _commentRepository.GetCommentsCount(videoId, false),
-                _videoRepository.GetViewsCount(videoId));
+                _videoRepository.GetViewsCountExercise(videoId));
         }
 
         private void PauseAllVideos()

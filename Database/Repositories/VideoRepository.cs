@@ -124,10 +124,34 @@ namespace BiomechanicNetwork.Database.Repositories
 
             return _dbHelper.ExecuteNonQuery(query, parameters) > 0;
         }
+        public bool AddViewExercise(int videoId, int userId)
+        {
+            // Добавляем просмотр только если его еще нет
+            var query = @"INSERT INTO video_views_exercise (video_id, user_id, view_date)
+                      VALUES (@videoId, @userId, @viewDate)
+                      ON CONFLICT (video_id, user_id) DO NOTHING";
+
+            var parameters = new NpgsqlParameter[]
+            {
+                new NpgsqlParameter("@videoId", videoId),
+                new NpgsqlParameter("@userId", userId),
+                new NpgsqlParameter("@viewDate", DateTime.UtcNow)
+            };
+
+            return _dbHelper.ExecuteNonQuery(query, parameters) > 0;
+        }
 
         public int GetViewsCount(int videoId)
         {
             var query = "SELECT COUNT(*) FROM video_views WHERE video_id = @videoId";
+            return Convert.ToInt32(_dbHelper.ExecuteScalar(query, new NpgsqlParameter[]
+            {
+                new NpgsqlParameter("@videoId", videoId)
+            }));
+        }
+        public int GetViewsCountExercise(int videoId)
+        {
+            var query = "SELECT COUNT(*) FROM video_views_exercise WHERE video_id = @videoId";
             return Convert.ToInt32(_dbHelper.ExecuteScalar(query, new NpgsqlParameter[]
             {
                 new NpgsqlParameter("@videoId", videoId)
@@ -170,6 +194,47 @@ namespace BiomechanicNetwork.Database.Repositories
         public int GetLikeCount(int videoId)
         {
             var query = "SELECT COUNT(*) FROM video_likes WHERE video_id = @videoId";
+            return Convert.ToInt32(_dbHelper.ExecuteScalar(query, new NpgsqlParameter[]
+            {
+                new NpgsqlParameter("@videoId", videoId)
+            }));
+        }
+        public bool ToggleLikeExercise(int videoId, int userId)
+        {
+            // Проверяем, есть ли уже лайк
+            var checkQuery = "SELECT COUNT(*) FROM video_likes_exercise WHERE video_id = @videoId AND user_id = @userId";
+            var hasLike = Convert.ToInt32(_dbHelper.ExecuteScalar(checkQuery, new NpgsqlParameter[]
+            {
+                new NpgsqlParameter("@videoId", videoId),
+                new NpgsqlParameter("@userId", userId)
+            })) > 0;
+
+            if (hasLike)
+            {
+                // Удаляем лайк
+                var deleteQuery = "DELETE FROM video_likes_exercise WHERE video_id = @videoId AND user_id = @userId";
+                return _dbHelper.ExecuteNonQuery(deleteQuery, new NpgsqlParameter[]
+                {
+                    new NpgsqlParameter("@videoId", videoId),
+                    new NpgsqlParameter("@userId", userId)
+                }) > 0;
+            }
+            else
+            {
+                // Добавляем лайк
+                var insertQuery = "INSERT INTO video_likes_exercise (video_id, user_id, like_date) VALUES (@videoId, @userId, @likeDate)";
+                return _dbHelper.ExecuteNonQuery(insertQuery, new NpgsqlParameter[]
+                {
+                    new NpgsqlParameter("@videoId", videoId),
+                    new NpgsqlParameter("@userId", userId),
+                    new NpgsqlParameter("@likeDate", DateTime.UtcNow)
+                }) > 0;
+            }
+        }
+
+        public int GetLikeCountExercise(int videoId)
+        {
+            var query = "SELECT COUNT(*) FROM video_likes_exercise WHERE video_id = @videoId";
             return Convert.ToInt32(_dbHelper.ExecuteScalar(query, new NpgsqlParameter[]
             {
                 new NpgsqlParameter("@videoId", videoId)

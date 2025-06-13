@@ -29,7 +29,7 @@ namespace BiomechanicNetwork.Database.Repositories
             if (!excludeOtherGroup)
                 s = "WHERE mg.name <> 'Другое'";
             var query = $@"SELECT mg.id, mg.name, mg.image_public_id, 
-                         e.id as exercise_id, e.name as exercise_name, e.video_public_id as video_public_id
+                         e.id as exercise_id, e.name as exercise_name, e.video_public_id as video_public_id, e.recommendations as recommendations
                          FROM muscle_groups mg
                          LEFT JOIN exercises e ON e.muscle_group_id = mg.id
                          {s}
@@ -66,7 +66,8 @@ namespace BiomechanicNetwork.Database.Repositories
                     {
                         Id = Convert.ToInt32(row["exercise_id"]),
                         Name = row["exercise_name"].ToString(),
-                        VideoPublicId = row["video_public_id"].ToString()
+                        VideoPublicId = row["video_public_id"].ToString(),
+                        Recommendations = row["recommendations"].ToString()
                     });
                 }
             }

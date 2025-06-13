@@ -29,7 +29,43 @@ namespace BiomechanicNetwork.Services
             }
         }
 
-        public string UploadVideo(string filePath, string publicId = null)
+        public string UploadImage(string filePath, string folder = null, string publicId = null)
+        {
+            if (string.IsNullOrEmpty(filePath))
+                throw new ArgumentNullException(nameof(filePath));
+
+            if (!File.Exists(filePath))
+                throw new FileNotFoundException("Файл изображения не найден", filePath);
+
+            if (_cloudinary == null)
+                throw new InvalidOperationException("Cloudinary не инициализирован");
+
+            try
+            {
+                var uploadParams = new ImageUploadParams()
+                {
+                    File = new FileDescription(filePath),
+                    Folder = folder,
+                    PublicId = publicId,
+                    Transformation = new Transformation()
+                        .Quality("auto")
+                        .FetchFormat("auto")
+                };
+
+                var uploadResult = _cloudinary.Upload(uploadParams);
+
+                if (uploadResult.Error != null)
+                    throw new Exception(uploadResult.Error.Message);
+
+                return uploadResult.PublicId;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Ошибка загрузки изображения: {ex.Message}", ex);
+            }
+        }
+
+        public string UploadVideo(string filePath, string folder = null, string publicId = null)
         {
             if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
                 throw new FileNotFoundException("Файл не найден", filePath);
@@ -41,14 +77,17 @@ namespace BiomechanicNetwork.Services
             {
                 var uploadParams = new VideoUploadParams()
                 {
-                    File = new FileDescription(@"test.mp4"),
-                    PublicId = "dog_closeup",
+                    File = new FileDescription(filePath),
+                    Folder = folder,
+                    PublicId = publicId,
+                    Transformation = new Transformation()
+                        .Quality("auto")
                 };
 
                 var uploadResult = _cloudinary.Upload(uploadParams);
 
-                if (uploadResult == null)
-                    throw new Exception("Cloudinary вернул null");
+                if (uploadResult.Error != null)
+                    throw new Exception(uploadResult.Error.Message);
 
                 return uploadResult.PublicId;
             }
@@ -84,5 +123,27 @@ namespace BiomechanicNetwork.Services
                 return null;
             }
         }
+
+        public bool DeleteResource(string publicId, ResourceType resourceType = ResourceType.Image)
+        {
+            if (string.IsNullOrEmpty(publicId))
+                return false;
+
+            try
+            {
+                var deletionParams = new DeletionParams(publicId)
+                {
+                    ResourceType = resourceType
+                };
+
+                var result = _cloudinary.Destroy(deletionParams);
+                return result.Result == "ok";
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
     }
 }

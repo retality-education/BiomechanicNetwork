@@ -1,4 +1,5 @@
-﻿using System;
+﻿using BiomechanicNetwork.Forms;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -49,7 +50,10 @@ namespace BiomechanicNetwork.ExtraControls
                 Cursor = Cursors.Hand,
                 BackColor = Color.Transparent
             };
-            settingsIcon.Click += (s, e) => SettingsClicked?.Invoke(this, e);
+            settingsIcon.Click += (s, e) => {
+                new SettingsForm(Program.CurrentUser.Id).Show();
+                this.Hide();
+            };
 
             // Иконка закрытия
             closeIcon = new PictureBox
